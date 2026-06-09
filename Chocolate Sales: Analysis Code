@@ -1,0 +1,118 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
+
+class ChocolateSales:
+    def _init_(self, data):
+        self.data = data
+        self.data['Date'] = pd.to_datetime(self.data['Date'], dayfirst=True)
+        self.data['Amount'] = pd.to_numeric(
+            self.data['Amount'].astype(str).str.replace('$', '').str.replace(',', ''), 
+            errors='coerce'
+        )
+        self.data['Day_Name'] = self.data['Date'].dt.day_name()
+
+    def plot_final_master_dashboard(self):
+        plt.style.use('dark_background')
+        plt.rcParams['font.family'] = 'sans-serif'
+        plt.rcParams['font.sans-serif'] = ['Segoe UI', 'Verdana', 'Arial']
+
+        BG_COLOR = '#0d1117'
+        CARD_COLOR = '#161b22'
+        BORDER_COLOR = '#30363d'
+        CYAN, GREEN, YELLOW, PINK = '#00d4ff', '#00ff88', '#ffff00', '#ff4d6d'
+
+        fig = plt.figure(figsize=(22, 30), facecolor=BG_COLOR)
+        
+        # Grid calibrado para evitar sobreposições
+        gs = gridspec.GridSpec(32, 4, figure=fig, hspace=2.2, wspace=0.4)
+        
+        # --- CÁLCULOS ---
+        total_rev = self.data['Amount'].sum()
+        total_orders = len(self.data)
+        avg_ticket = self.data['Amount'].mean()
+        best_product = self.data.groupby('Product')['Amount'].sum().idxmax()
+        ticket_pais = self.data.groupby('Country')['Amount'].mean().sort_values()
+
+        # --- CABEÇALHO ---
+        fig.text(0.05, 0.96, 'CHOCOLATE SALES ANALYSIS', fontsize=36, fontweight='bold', color=CYAN)
+        fig.text(0.05, 0.945, 'Data Scientist: Artur Montovani', fontsize=13, color='#8b949e')
+
+        # --- 1. CARDS DE KPI ---
+        kpis = [
+            (f"${total_rev:,.0f}", "TOTAL REVENUE", "white"),
+            (f"{total_orders:,}", "TOTAL ORDERS", CYAN),
+            (f"${avg_ticket:.2f}", "AVG TICKET", PINK),
+            (best_product.upper(), "BEST SELLER", YELLOW)
+        ]
+
+        for i, (val, label, col) in enumerate(kpis):
+            ax_card = fig.add_subplot(gs[2:6, i], facecolor=CARD_COLOR)
+            for spine in ax_card.spines.values(): spine.set_edgecolor(BORDER_COLOR)
+            ax_card.text(0.5, 0.60, val, color=col, fontsize=18, ha='center', va='center', fontweight='bold')
+            ax_card.text(0.5, 0.35, label, color='#8b949e', fontsize=10, ha='center', va='center', fontweight='bold')
+            ax_card.set_xticks([]); ax_card.set_yticks([])
+
+        # --- 2. TENDÊNCIA ---
+        ax_trend = fig.add_subplot(gs[8:13, :], facecolor=CARD_COLOR)
+        daily_sales = self.data.groupby('Date')['Amount'].sum()
+        ax_trend.fill_between(daily_sales.index, daily_sales.values, color=CYAN, alpha=0.1)
+        ax_trend.plot(daily_sales.rolling(window=7).mean().index, 
+                      daily_sales.rolling(window=7).mean().values, color=CYAN, linewidth=4)
+        ax_trend.set_title('GROWTH TRAJECTORY', color='white', loc='left', pad=15, fontweight='bold', fontsize=16)
+        ax_trend.grid(color=BORDER_COLOR, linestyle='--', alpha=0.2)
+
+        # --- 3. SUPORTE ---
+        ax_ticket = fig.add_subplot(gs[16:21, 0:2], facecolor=CARD_COLOR)
+        ticket_pais.plot(kind='barh', ax=ax_ticket, color=GREEN, alpha=0.8)
+        ax_ticket.set_title('AVG TICKET BY COUNTRY', fontweight='bold', color='#8b949e', fontsize=13)
+
+        ax_week = fig.add_subplot(gs[16:21, 2:4], facecolor=CARD_COLOR)
+        day_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+        self.data.groupby('Day_Name')['Amount'].sum().reindex(day_order).plot(kind='bar', ax=ax_week, color=PINK)
+        ax_week.set_title('WEEKLY PERFORMANCE', fontweight='bold', color='#8b949e', fontsize=13)
+        # Removendo o rótulo "Day_Name" do eixo X
+        ax_week.set_xlabel('') 
+        plt.xticks(rotation=45, ha='right')
+
+        # --- 4. BASE FINAL ---
+        ax_top5 = fig.add_subplot(gs[25:32, 0:2], facecolor=CARD_COLOR)
+        top5_data = self.data.groupby('Product')['Amount'].sum().sort_values(ascending=False).head(5)
+        top5_data.plot(kind='bar', ax=ax_top5, color=CYAN, width=0.6)
+        ax_top5.set_title('TOP 5 PRODUCTS (REVENUE)', fontweight='bold', color='white', fontsize=18, pad=20)
+        # Removendo rótulo do eixo X do Top 5 também para manter o padrão
+        ax_top5.set_xlabel('') 
+        plt.xticks(rotation=45, ha='right', fontsize=10)
+        
+        for p in ax_top5.patches:
+            ax_top5.annotate(f'${p.get_height():,.0f}', (p.get_x() + p.get_width() / 2., p.get_height()), 
+                             ha='center', va='center', xytext=(0, 15), textcoords='offset points', 
+                             fontsize=9, color='white', fontweight='bold')
+
+        # Pizza Ampliada
+        ax_donut = fig.add_subplot(gs[24:32, 2:], facecolor=BG_COLOR)
+        share = self.data.groupby('Product')['Amount'].sum().sort_values(ascending=False).head(5)
+        
+        wedges, texts, autotexts = ax_donut.pie(
+            share, labels=share.index, autopct='%1.1f%%', startangle=140, 
+            colors=[CYAN, PINK, GREEN, YELLOW, '#6c5ce7'],
+            pctdistance=0.80, labeldistance=1.15,
+            radius=1.2,
+            wedgeprops={'width': 0.5, 'edgecolor': BG_COLOR, 'linewidth': 3},
+            textprops={'color': 'white', 'fontsize': 11, 'fontweight': 'bold'}
+        )
+        
+        for autotext in autotexts:
+            autotext.set_color('black')
+            autotext.set_fontsize(11)
+
+        plt.tight_layout(rect=[0, 0, 1, 0.93])
+        plt.show()
+
+# --- EXECUÇÃO ---
+try:
+    df = pd.read_csv('Chocolate Sales (2).csv')
+    minha_analise = ChocolateSales(df)
+    minha_analise.plot_final_master_dashboard()
+except Exception as e:
+    print(f"Erro: {e}")
